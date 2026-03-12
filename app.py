@@ -1,110 +1,124 @@
+
+# ============================================================
+# Mouser BOM Sourcing Dashboard (Mouser-only, production-safe)
+# - Secure TLS (no verify=False)
+# - Corporate CA friendly (pip-system-certs / REQUESTS_CA_BUNDLE)
+# - Per-minute rate limiting + retries/backoff
+# - Real endpoint health check
+# - CSV upload, total cost, results download
+# ============================================================
+
 import os
 import time
 import json
 import random
+from typing import Tuple, List, Optional, Dict, Any
+
 import pandas as pd
 import requests
 import streamlit as st
 from dotenv import load_dotenv
-from typing import Tuple, List, Optional, Dict, Any
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# =====================================
-# App & Env
-# =====================================
+# ------------------------------------------------------------
+# Streamlit App Config
+# ------------------------------------------------------------
 st.set_page_config(page_title="Mouser BOM Tool", layout="wide")
 st.title("🔍 Mouser BOM Sourcing Dashboard")
 
 load_dotenv()
 
-# Defaults can be tuned via env vars
+# ------------------------------------------------------------
+# Timeouts & Retry Settings
+# ------------------------------------------------------------
 CONNECT_TIMEOUT = float(os.getenv("CONNECT_TIMEOUT", "5"))
 READ_TIMEOUT = float(os.getenv("READ_TIMEOUT", "45"))
 TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
 
-# Rate limiting: calls per minute (safe default)
-CALLS_PER_MIN = int(os.getenv("MOUSER_CALLS_PER_MINUTE", "10"))
-MIN_INTERVAL = 60.0 / max(CALLS_PER_MIN, 1)
-
-# Backoff for transient and rate-limit retries
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "5"))
 BACKOFF_BASE = float(os.getenv("BACKOFF_BASE", "1.2"))
 BACKOFF_CAP = float(os.getenv("BACKOFF_CAP", "30"))
 
-# =====================================
-# Global session (ignore proxy env by default)
-# =====================================
+# ------------------------------------------------------------
+# CREATE GLOBAL SESSION (Secure, Correct)
+# ------------------------------------------------------------
 session = requests.Session()
+
+# If your corporate network requires proxy, allow it explicitly
 session.trust_env = os.getenv("TRUST_ENV", "false").lower() == "true"
 
-# Mount retries for network and HTTP 5xx/429
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+# Corporate CA support (preferred):
+# - If you installed 'pip-system-certs', Python will use the Windows system store.
+# - If REQUESTS_CA_BUNDLE / SSL_CERT_FILE is provided, honor it.
+bundle = os.getenv("REQUESTS_CA_BUNDLE") or os.getenv("SSL_CERT_FILE")
+if bundle and os.path.exists(bundle):
+    session.verify = bundle
+# else: default trust (certifi + truststore on modern pip)
 
+# Robust retries for transient network and 429/5xx
 retry = Retry(
     total=MAX_RETRIES,
-    connect=min(3, MAX_RETRIES),
-    read=min(3, MAX_RETRIES),
-    status=min(3, MAX_RETRIES),
+    connect=3,
+    read=3,
+    status=3,
     backoff_factor=0.8,
     status_forcelist=(429, 500, 502, 503, 504),
     allowed_methods=("GET", "POST", "HEAD"),
-    raise_on_status=False,
 )
 adapter = HTTPAdapter(max_retries=retry)
 session.mount("https://", adapter)
 session.mount("http://", adapter)
 
-# =====================================
-# Utilities
-# =====================================
+# ------------------------------------------------------------
+# Rate Limiter
+# ------------------------------------------------------------
 class RateLimiter:
-    """Simple per-process rate limiter. Ensures a minimum interval between calls.
-    Thread-safe enough for Streamlit's single-threaded run; uses monotonic clock.
-    """
-    def __init__(self, min_interval_sec: float):
-        self.min_interval = max(0.0, min_interval_sec)
-        self._next_ok = time.monotonic()
+    def __init__(self, calls_per_min: int):
+        self.min_interval = 60.0 / max(calls_per_min, 1)
+        self.next_ok = time.monotonic()
 
     def wait(self):
         now = time.monotonic()
-        if now < self._next_ok:
-            time.sleep(self._next_ok - now)
-        self._next_ok = time.monotonic() + self.min_interval
+        if now < self.next_ok:
+            time.sleep(self.next_ok - now)
+        self.next_ok = time.monotonic() + self.min_interval
 
-rate_limiter = RateLimiter(MIN_INTERVAL)
+MOUSER_RATE = int(os.getenv("MOUSER_CALLS_PER_MINUTE", "10"))
+rate_limiter = RateLimiter(MOUSER_RATE)
 
-
-def compute_total(price: Optional[str], qty: int) -> Optional[float]:
-    """Compute total cost from unit price string like '$1.23'."""
-    if price is None:
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+def parse_price(value: Any) -> Optional[float]:
+    if value is None:
         return None
     try:
-        p = float(str(price).replace("$", "").replace(",", "").strip())
-        return round(p * qty, 4)
+        return float(str(value).replace("$", "").replace(",", "").strip())
     except Exception:
         return None
 
+def compute_total(price: Optional[str], qty: int) -> Optional[float]:
+    p = parse_price(price)
+    return round(p * qty, 4) if p is not None else None
 
-# =====================================
+# ============================================================
 # Mouser Client
-# =====================================
+# ============================================================
 class MouserClient:
     SEARCH_URL = "https://api.mouser.com/api/v1/search/partnumber"
 
     def __init__(self, api_key: Optional[str]):
-        self.api_key = api_key
+        self.api_key = (api_key or "").strip()
         # Simple in-memory cache { mpn -> (data, alternates, error) }
         self.cache: Dict[str, Tuple[Optional[Dict[str, Any]], List[str], Optional[str]]] = {}
 
     def _backoff_sleep(self, attempt: int):
-        # exponential backoff with jitter
-        delay = min(BACKOFF_CAP, (BACKOFF_BASE ** attempt))
-        # add a little jitter up to 250ms
-        delay += random.random() * 0.25
+        # Exponential backoff with jitter
+        delay = min(BACKOFF_CAP, (BACKOFF_BASE ** attempt)) + random.random() * 0.25
         time.sleep(delay)
 
     def _post_once(self, mpn: str) -> requests.Response:
-        # rate limit BEFORE the call
         rate_limiter.wait()
         return session.post(
             self.SEARCH_URL,
@@ -114,40 +128,47 @@ class MouserClient:
         )
 
     def search_part(self, mpn: str) -> Tuple[Optional[Dict], List[str], Optional[str]]:
-        """Return (main_data, alternates, error). Caches by MPN and enforces rate-limit.
-        Handles Mouser's 'TooManyRequests' (often 403) with backoff.
         """
-        mpn_key = mpn.strip()
-        if mpn_key in self.cache:
-            return self.cache[mpn_key]
+        Returns (main_data, alternates, error).
+
+        main_data = {
+            "price": str|None,
+            "manufacturer": str|None,
+            "stock": str|None,
+            "lifecycle": str|None
+        }
+        """
+        key = (mpn or "").strip()
+        if key in self.cache:
+            return self.cache[key]
 
         if not self.api_key:
             result = (None, [], "Missing MOUSER_API_KEY")
-            self.cache[mpn_key] = result
+            self.cache[key] = result
             return result
 
         last_exc: Optional[Exception] = None
+
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                resp = self._post_once(mpn_key)
+                resp = self._post_once(key)
             except Exception as e:
                 last_exc = e
                 self._backoff_sleep(attempt)
                 continue
 
-            # Direct success
             if resp.status_code == 200:
                 try:
                     data = resp.json()
                 except json.JSONDecodeError:
                     result = (None, [], "Invalid JSON response from Mouser")
-                    self.cache[mpn_key] = result
+                    self.cache[key] = result
                     return result
 
-                parts = data.get("SearchResults", {}).get("Parts", [])
+                parts = data.get("SearchResults", {}).get("Parts", []) or []
                 if not parts:
                     result = (None, [], "No results")
-                    self.cache[mpn_key] = result
+                    self.cache[key] = result
                     return result
 
                 main = parts[0]
@@ -161,15 +182,15 @@ class MouserClient:
 
                 main_data = {
                     "price": unit_price,
-                    "lifecycle": main.get("LifecycleStatus"),
                     "manufacturer": main.get("Manufacturer"),
                     "stock": main.get("Availability"),
+                    "lifecycle": main.get("LifecycleStatus"),
                 }
                 result = (main_data, alternates, None)
-                self.cache[mpn_key] = result
+                self.cache[key] = result
                 return result
 
-            # Mouser rate-limit signals can be 429 or 403 with a JSON body
+            # Mouser rate-limit signals can be 429 or 403 with JSON body
             if resp.status_code in (403, 429):
                 try:
                     body = resp.json()
@@ -178,37 +199,34 @@ class MouserClient:
                 err_list = body.get("Errors") or []
                 err_code = (err_list[0] or {}).get("Code") if err_list else None
                 if err_code == "TooManyRequests":
-                    # escalate backoff and retry
                     self._backoff_sleep(attempt)
                     continue
 
             # Other non-200 responses: surface message/snippet
             err_snippet = (resp.text or "").strip()[:300]
             result = (None, [], f"HTTP {resp.status_code}: {err_snippet}")
-            self.cache[mpn_key] = result
+            self.cache[key] = result
             return result
 
         # If we exhausted retries
         if last_exc is not None:
             result = (None, [], f"Network error: {last_exc}")
-            self.cache[mpn_key] = result
+            self.cache[key] = result
             return result
-        # Generic fallback
+
         result = (None, [], "Request failed after retries")
-        self.cache[mpn_key] = result
+        self.cache[key] = result
         return result
 
-
-# =====================================
+# ============================================================
 # Network Diagnostic (real API path)
-# =====================================
+# ============================================================
 def network_test() -> Tuple[bool, str]:
     api_key = os.getenv("MOUSER_API_KEY", "").strip()
     if not api_key:
         return False, "MOUSER_API_KEY not set"
     try:
-        # Make a real, tiny request to the same endpoint.
-        rate_limiter.wait()  # respect limiter even during health check
+        rate_limiter.wait()
         r = session.post(
             MouserClient.SEARCH_URL,
             params={"apiKey": api_key},
@@ -217,15 +235,13 @@ def network_test() -> Tuple[bool, str]:
         )
         if r.status_code == 200:
             return True, f"API ok (200) in {r.elapsed.total_seconds():.2f}s"
-        # Surface a short error body for visibility
         return False, f"HTTP {r.status_code}: {r.text[:200]}"
     except Exception as e:
         return False, str(e)
 
-
-# =====================================
+# ============================================================
 # UI: Network Diagnostic
-# =====================================
+# ============================================================
 with st.expander("🔧 Network Diagnostic"):
     ok, message = network_test()
     if ok:
@@ -233,15 +249,14 @@ with st.expander("🔧 Network Diagnostic"):
     else:
         st.error(f"Network Error: {message}")
         st.info(
-            "If you must use a corporate proxy, set TRUST_ENV=true and configure HTTPS_PROXY.\n"
-            "For TLS inspection, provide a combined CA bundle via REQUESTS_CA_BUNDLE."
+            "If your company inspects TLS, install 'pip-system-certs' in your venv "
+            "or set REQUESTS_CA_BUNDLE to a combined CA file."
         )
         st.stop()
 
-
-# =====================================
+# ============================================================
 # Streamlit UI: Upload & Process BOM
-# =====================================
+# ============================================================
 api_key = os.getenv("MOUSER_API_KEY", "").strip()
 mouser_client = MouserClient(api_key)
 
@@ -265,21 +280,19 @@ if uploaded_file:
         st.stop()
 
     df["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce")
-    df = df.dropna(subset=["Quantity"])  # drop rows where Quantity is NaN
+    df = df.dropna(subset=["Quantity"])
     df["Quantity"] = df["Quantity"].astype(int)
-
-    # Normalize PartNumber column to string
     df["PartNumber"] = df["PartNumber"].astype(str).str.strip()
 
-    results = []
-    total_cost = 0.0
+    results: List[Dict[str, Any]] = []
+    total_cost: float = 0.0
 
     progress = st.progress(0.0)
     n = len(df)
 
     for i, (_, row) in enumerate(df.iterrows(), start=1):
         mpn = row["PartNumber"]
-        qty = int(row["Quantity"]) if not pd.isna(row["Quantity"]) else 0
+        qty = int(row["Quantity"])
 
         data, alternates, error = mouser_client.search_part(mpn)
 
@@ -325,14 +338,15 @@ if uploaded_file:
         "text/csv",
     )
 else:
-    st.info("Upload a CSV to begin (see sample in README).")
+    st.info("Upload a CSV to begin.")
 
-# Footer help
+# Footer tips
 with st.expander("ℹ️ Help & Tips"):
     st.markdown(
-        "- **Rate limiting**: This app enforces ~%d calls/min (MIN_INTERVAL=%.2fs).\n"
-        "- **Retries & Backoff**: Transient errors (429/5xx) are retried with exponential backoff.\n"
-        "- **Proxy/TLS**: Set TRUST_ENV=true to inherit corporate proxy env vars; add CA bundle via REQUESTS_CA_BUNDLE if TLS inspection is used.\n"
+        "- **Rate limiting**: ~{} calls/min (min interval = {:.2f}s)\n"
+        "- **Retries & Backoff**: Transient errors (429/5xx) retried with exponential backoff.\n"
+        "- **Proxy/TLS**: Set `TRUST_ENV=true` to inherit corporate proxy. "
+        "If TLS inspection is used, install `pip-system-certs` or set `REQUESTS_CA_BUNDLE`.\n"
         "- **Caching**: Duplicate MPNs in the same run are served from in‑memory cache."
-        % (CALLS_PER_MIN, MIN_INTERVAL)
+        .format(MOUSER_RATE, rate_limiter.min_interval)
     )

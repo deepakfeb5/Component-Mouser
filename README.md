@@ -14,10 +14,14 @@ This Streamlit app prices a BOM against Mouser's Search API and includes:
 python -m venv .venv
 .venv\Scripts\activate
 python.exe -m pip install --upgrade pip
+python -m pip install pip-system-certs
 pip install -r requirements.txt
 cp .env.example .env
 # edit .env and set MOUSER_API_KEY
-streamlit run app.py
+python -m pip install streamlit requests pandas python-dotenv pip-system-certs
+python -m streamlit
+python -m streamlit run app.py
+
 ```
 
 ### Environment Variables (optional)
