@@ -1,10 +1,10 @@
-// Load BOM.csv and convert to table
+// Load CSV file and convert to HTML table
 async function loadCSV() {
     try {
         const response = await fetch("BOM.csv");
         const data = await response.text();
 
-        const rows = data.split("\n").map(row => row.split(","));
+        const rows = data.split("\n").map(r => r.split(","));
         let html = "<table border='1' style='border-collapse:collapse; width:100%'>";
 
         rows.forEach((row, index) => {
@@ -14,15 +14,30 @@ async function loadCSV() {
             });
             html += "</tr>";
         });
-
         html += "</table>";
 
         document.getElementById("bomTable").innerHTML = html;
 
     } catch (err) {
-        console.error("Error loading CSV:", err);
-        document.getElementById("bomTable").innerHTML = "Failed to load BOM.csv";
+        document.getElementById("bomTable").innerHTML = "Error loading BOM.csv";
+        console.error(err);
     }
 }
 
-window.onload = loadCSV;
+// Load requirements.txt
+async function loadRequirements() {
+    const res = await fetch("requirements.txt");
+    document.getElementById("reqText").textContent = await res.text();
+}
+
+// Load app.py as text
+async function loadAppPy() {
+    const res = await fetch("app.py");
+    document.getElementById("appCode").textContent = await res.text();
+}
+
+window.onload = () => {
+    loadCSV();
+    loadRequirements();
+    loadAppPy();
+};
