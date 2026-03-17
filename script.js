@@ -1,5 +1,5 @@
 // ✅ UPDATE THIS with your actual Render backend URL
-const API_BASE = "https://component-mouser-api.onrender.com";
+const API_BASE = "https://<your-service>.onrender.com";
 const API_URL = `${API_BASE}/api/bom`;
 
 let bomData = []; // Stores full API response
