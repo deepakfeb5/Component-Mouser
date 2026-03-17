@@ -32,3 +32,41 @@ button:hover {
     width: 200px;
     margin-top: 20px;
 }
+/* Search Box */
+.search-box {
+    width: 100%;
+    padding: 10px;
+    margin: 15px 0;
+    font-size: 16px;
+    border: 1px solid #bbb;
+    border-radius: 6px;
+}
+
+/* Summary Box */
+.summary-container {
+    margin-bottom: 25px;
+    padding: 20px;
+    background: #daf0ff;
+    border-left: 5px solid #1a73e8;
+    border-radius: 8px;
+}
+
+.cost-box {
+    font-size: 36px;
+    font-weight: bold;
+    margin: 10px 0;
+    color: #0a4fa3;
+}
+
+.download-btn {
+    padding: 10px 20px;
+    background: #1a73e8;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.download-btn:hover {
+    background: #0b4ba8;
+}
