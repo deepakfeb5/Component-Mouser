@@ -2,3 +2,6 @@ streamlit==1.32.0
 requests==2.31.0
 pandas==2.2.1
 python-dotenv==1.0.1
+Flask==2.3.3
+pandas==2.2.0
+gunicorn==21.2.0
