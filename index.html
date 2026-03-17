@@ -1,49 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Component Mouser Viewer</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BOM Viewer</title>
 
-    <!-- Link CSS -->
-    <link rel="stylesheet" href="style.css">
+    style.css
 </head>
-
 <body>
 
-    <header>
-        <h1>Component Mouser Viewer</h1>
-        <p>Static HTML site powered by GitHub Pages</p>
-    </header>
+<header>
+    <h1>Component Mouser Viewer</h1>
+</header>
 
-    <main>
+<main>
 
-        <!-- TOP SUMMARY BOX -->
-        <section id="summaryBox" class="summary-container">
-            <h2>📊 Total BOM Cost</h2>
-            <div id="totalCost" class="cost-box">$0.00</div>
-            <button id="downloadBtn" class="download-btn">Download Results CSV</button>
-        </section>
+    <!-- Total BOM COST -->
+    <section class="summary">
+        <h2>📊 Total BOM Cost</h2>
+        <div id="totalCost" class="cost-box">$0.00</div>
+        <button id="downloadBtn" class="download-btn">Download Results CSV</button>
+    </section>
 
-        <!-- SEARCH BAR -->
-        <section>
-            <input type="text" id="searchInput" placeholder="Search Part Number, Manufacturer, etc..." class="search-box">
-        </section>
+    <!-- SEARCH -->
+    <input id="searchInput" class="search-box" placeholder="Search part number, manufacturer…">
 
-        <!-- BOM TABLE -->
-        <section>
-            <h2>📦 Bill of Materials (BOM.csv)</h2>
-            <div id="bomTable">Loading BOM...</div>
-        </section>
+    <!-- BOM TABLE -->
+    <section>
+        <h2>📦 Bill of Materials</h2>
+        <div id="bomTable">Loading...</div>
+    </section>
 
-    </main>
+</main>
 
-    <footer>
-        <p>© 2026 Component-Mouser • Static GitHub Pages Deployment</p>
-    </footer>
-
-    <!-- Scripts -->
-    <script src="script.js"></script>
+script.js</script>
 
 </body>
 </html>
