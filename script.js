@@ -1,34 +1,35 @@
-let bomData = [];  // store rows for search + export
+let bomData = [];
+let apiUrl = "https://YOUR_RENDER_URL/api/bom";   // ← update after deployment!
 
-// Load BOM CSV
-async function loadCSV() {
-    try {
-        const response = await fetch("BOM.csv");
-        const csvText = await response.text();
+async function loadBOM() {
+    const res = await fetch(apiUrl);
+    const data = await res.json();
 
-        const rows = csvText.trim().split("\n").map(r => r.split(","));
-        bomData = rows;
+    bomData = data.table;
 
-        renderTable(rows);
-        calculateTotal(rows);
-
-    } catch (err) {
-        document.getElementById("bomTable").innerHTML = "Error loading BOM.csv";
-        console.error(err);
-    }
+    renderTable(bomData);
+    document.getElementById("totalCost").innerText =
+        "$" + data.total_cost.toLocaleString();
 }
 
-// Render the table
 function renderTable(rows) {
-    let html = "<table border='1' style='border-collapse:collapse; width:100%'>";
+    if (!rows.length) return;
 
-    rows.forEach((row, i) => {
-        html += i === 0 ? "<tr style='background:#e0e0e0'>" : "<tr>";
+    let html = "<table border='1' style='width:100%; border-collapse:collapse;'>";
 
-        row.forEach(col => {
-            html += `<td style="padding:6px">${col}</td>`;
+    // Header
+    html += "<tr style='background:#e0e0e0'>";
+    Object.keys(rows[0]).forEach(col => {
+        html += `<th style="padding:6px; text-align:left">${col}</th>`;
+    });
+    html += "</tr>";
+
+    // Rows
+    rows.forEach(r => {
+        html += "<tr>";
+        Object.values(r).forEach(val => {
+            html += `<td style="padding:6px">${val}</td>`;
         });
-
         html += "</tr>";
     });
 
@@ -36,45 +37,30 @@ function renderTable(rows) {
     document.getElementById("bomTable").innerHTML = html;
 }
 
-// Calculate total BOM cost from last column (Total Price)
-function calculateTotal(rows) {
-    let sum = 0;
-
-    for (let i = 1; i < rows.length; i++) {
-        const totalPrice = parseFloat(rows[i][rows[i].length - 2]);  // 2nd last column
-        
-        if (!isNaN(totalPrice)) {
-            sum += totalPrice;
-        }
-    }
-
-    document.getElementById("totalCost").innerText = "$" + sum.toLocaleString();
-}
-
-// Search Filter
+// Search
 document.getElementById("searchInput").addEventListener("keyup", function () {
-    const query = this.value.toLowerCase();
-
-    const filtered = bomData.filter((row, i) => {
-        if (i === 0) return true; // keep header
-        return row.join(" ").toLowerCase().includes(query);
-    });
-
+    const q = this.value.toLowerCase();
+    const filtered = bomData.filter(item =>
+        JSON.stringify(item).toLowerCase().includes(q)
+    );
     renderTable(filtered);
 });
 
-// CSV Download Button
+// CSV Download
 document.getElementById("downloadBtn").addEventListener("click", () => {
-    const csvContent = bomData.map(r => r.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    let csv = Object.keys(bomData[0]).join(",") + "\n";
+
+    bomData.forEach(row => {
+        csv += Object.values(row).join(",") + "\n";
+    });
+
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
     a.href = url;
     a.download = "bom_results.csv";
     a.click();
-
-    URL.revokeObjectURL(url);
 });
 
-window.onload = loadCSV;
+window.onload = loadBOM;
