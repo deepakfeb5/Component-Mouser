@@ -1,48 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Component Mouser – Dashboard</title>
+// Load CSV file and convert to HTML table
+async function loadCSV() {
+    try {
+        const response = await fetch("BOM.csv");
+        const data = await response.text();
 
-    <!-- Link CSS -->
-    <link rel="stylesheet" href="style.css">
-</head>
+        const rows = data.split("\n").map(r => r.split(","));
+        let html = "<table border='1' style='border-collapse:collapse; width:100%'>";
 
-<body>
+        rows.forEach((row, index) => {
+            html += index === 0 ? "<tr style='background:#e0e0e0'>" : "<tr>";
+            row.forEach(col => {
+                html += `<td style="padding:6px">${col}</td>`;
+            });
+            html += "</tr>";
+        });
+        html += "</table>";
 
-    <header>
-        <h1>Component Mouser Viewer</h1>
-        <p>Static HTML site powered by GitHub Pages</p>
-    </header>
+        document.getElementById("bomTable").innerHTML = html;
 
-    <main>
-        <!-- BOM Section -->
-        <section>
-            <h2>📦 Bill of Materials (BOM.csv)</h2>
-            <div id="bomTable" style="margin-bottom: 40px;">Loading BOM...</div>
-        </section>
+    } catch (err) {
+        document.getElementById("bomTable").innerHTML = "Error loading BOM.csv";
+        console.error(err);
+    }
+}
 
-        <!-- Requirements Section -->
-        <section>
-            <h2>📄 requirements.txt</h2>
-            <pre id="reqText" style="background:#f5f5f5; padding:15px;">Loading...</pre>
-        </section>
+// Load requirements.txt
+async function loadRequirements() {
+    const res = await fetch("requirements.txt");
+    document.getElementById("reqText").textContent = await res.text();
+}
 
-        <!-- app.py Section -->
-        <section style="margin-top: 40px;">
-            <h2>🐍 app.py (Static View Only)</h2>
-            <pre id="appCode" style="background:#f5f5f5; padding:15px;">Loading...</pre>
-        </section>
+// Load app.py as text
+async function loadAppPy() {
+    const res = await fetch("app.py");
+    document.getElementById("appCode").textContent = await res.text();
+}
 
-    </main>
-
-    <footer style="margin-top:50px; text-align:center; padding:10px;">
-        <p>© 2026 Component-Mouser • Static GitHub Pages Deployment</p>
-    </footer>
-
-    <!-- Link Script -->
-    <script src="script.js"></script>
-
-</body>
-</html>
+window.onload = () => {
+    loadCSV();
+    loadRequirements();
+    loadAppPy();
+};
