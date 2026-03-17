@@ -1,58 +1,78 @@
-let bomData = [];
-let apiUrl = "https://YOUR_RENDER_URL/api/bom";   // ← update after deployment!
+// ✅ UPDATE THIS with your actual Render backend URL
+const API_BASE = "https://component-mouser-api.onrender.com";
+const API_URL = `${API_BASE}/api/bom`;
 
+let bomData = []; // Stores full API response
+
+// ✅ Load BOM from Flask API
 async function loadBOM() {
-    const res = await fetch(apiUrl);
-    const data = await res.json();
+    try {
+        const res = await fetch(API_URL);
+        const data = await res.json();
 
-    bomData = data.table;
+        bomData = data.table;   // Save for filtering + CSV export
 
-    renderTable(bomData);
-    document.getElementById("totalCost").innerText =
-        "$" + data.total_cost.toLocaleString();
+        renderTable(bomData);   // Build table
+        updateTotalCost(data.total_cost);  // Show total BOM price
+
+    } catch (err) {
+        console.error("API Fetch Error:", err);
+        document.getElementById("bomTable").innerHTML =
+            "<p style='color:red'>Failed to load BOM from API.</p>";
+    }
 }
 
+// ✅ Render HTML Table
 function renderTable(rows) {
     if (!rows.length) return;
 
-    let html = "<table border='1' style='width:100%; border-collapse:collapse;'>";
+    let html = "<table border='1' style='width:100%;border-collapse:collapse;'>";
 
     // Header
     html += "<tr style='background:#e0e0e0'>";
     Object.keys(rows[0]).forEach(col => {
-        html += `<th style="padding:6px; text-align:left">${col}</th>`;
+        html += `<th style="padding:6px;text-align:left">${col}</th>`;
     });
     html += "</tr>";
 
     // Rows
-    rows.forEach(r => {
+    rows.forEach(row => {
         html += "<tr>";
-        Object.values(r).forEach(val => {
+        Object.values(row).forEach(val => {
             html += `<td style="padding:6px">${val}</td>`;
         });
         html += "</tr>";
     });
 
     html += "</table>";
+
     document.getElementById("bomTable").innerHTML = html;
 }
 
-// Search
+// ✅ Update Total Price Box
+function updateTotalCost(amount) {
+    document.getElementById("totalCost").innerText =
+        "$" + amount.toLocaleString();
+}
+
+// ✅ Search Filter
 document.getElementById("searchInput").addEventListener("keyup", function () {
     const q = this.value.toLowerCase();
-    const filtered = bomData.filter(item =>
-        JSON.stringify(item).toLowerCase().includes(q)
+
+    const filtered = bomData.filter(row =>
+        JSON.stringify(row).toLowerCase().includes(q)
     );
+
     renderTable(filtered);
 });
 
-// CSV Download
+// ✅ Download Results CSV
 document.getElementById("downloadBtn").addEventListener("click", () => {
-    let csv = Object.keys(bomData[0]).join(",") + "\n";
+    if (!bomData.length) return;
 
-    bomData.forEach(row => {
-        csv += Object.values(row).join(",") + "\n";
-    });
+    const headers = Object.keys(bomData[0]).join(",");
+    const rows = bomData.map(r => Object.values(r).join(",")).join("\n");
+    const csv = headers + "\n" + rows;
 
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -61,6 +81,10 @@ document.getElementById("downloadBtn").addEventListener("click", () => {
     a.href = url;
     a.download = "bom_results.csv";
     a.click();
+
+    URL.revokeObjectURL(url);
 });
 
+// ✅ Start
 window.onload = loadBOM;
+``
