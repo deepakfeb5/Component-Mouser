@@ -7,21 +7,15 @@ app = Flask(__name__)
 @app.route("/api/bom", methods=["GET"])
 def get_bom():
     try:
-        # Ensure file exists
         if not os.path.exists("BOM.csv"):
             return jsonify({"error": "BOM.csv not found"}), 404
 
-        # Load the BOM CSV
         df = pd.read_csv("BOM.csv")
-
-        # Normalize column names for safety
         df.columns = [c.strip() for c in df.columns]
 
-        # Add Total Price if required fields exist
         if "Unit Price" in df.columns and "Quantity" in df.columns:
             df["Total Price"] = df["Unit Price"].fillna(0) * df["Quantity"].fillna(0)
 
-        # Compute total BOM cost
         total_cost = df["Total Price"].sum() if "Total Price" in df.columns else 0
 
         return jsonify({
@@ -31,3 +25,19 @@ def get_bom():
         })
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/")
+def home():
+    return jsonify({
+        "status": "OK",
+        "message": "Component Mouser API running successfully.",
+        "endpoints": ["/api/bom"]
+    })
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+``
