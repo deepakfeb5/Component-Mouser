@@ -14,8 +14,8 @@ async function loadCSV() {
             });
             html += "</tr>";
         });
-        html += "</table>";
 
+        html += "</table>";
         document.getElementById("bomTable").innerHTML = html;
 
     } catch (err) {
@@ -24,20 +24,4 @@ async function loadCSV() {
     }
 }
 
-// Load requirements.txt
-async function loadRequirements() {
-    const res = await fetch("requirements.txt");
-    document.getElementById("reqText").textContent = await res.text();
-}
-
-// Load app.py as text
-async function loadAppPy() {
-    const res = await fetch("app.py");
-    document.getElementById("appCode").textContent = await res.text();
-}
-
-window.onload = () => {
-    loadCSV();
-    loadRequirements();
-    loadAppPy();
-};
+window.onload = loadCSV;
